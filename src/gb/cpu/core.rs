@@ -79,8 +79,8 @@ impl CPU {
     pub fn set_h(&mut self, v: u8) { self.hl = (self.hl & 0x00FF) | (u16::from(v) << 8); }
 
     pub fn zf(&self) -> bool { (self.f() & 0x80) != 0 }
-    //pub fn sf(&self) -> bool { (self.f() & 0x40) != 0 }
-    //pub fn hc(&self) -> bool { (self.f() & 0x20) != 0 }
+    pub fn sf(&self) -> bool { (self.f() & 0x40) != 0 }
+    pub fn hc(&self) -> bool { (self.f() & 0x20) != 0 }
     pub fn cy(&self) -> bool { (self.f() & 0x10) != 0 }
 
     pub fn set_zf(&mut self, v: bool) { self.set_f((self.f() & (!0x80)) | (u8::from(v) << 7)); }

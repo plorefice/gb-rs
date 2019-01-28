@@ -4,6 +4,8 @@ use super::cpu::CPU;
 const CPU_CLOCK: u64 = 4_194_304; // Hz
 const HSYNC_CLOCK: u64 = 9_198; // Hz
 
+const CYCLES_PER_HSYNC: u64 = CPU_CLOCK / HSYNC_CLOCK;
+
 pub struct GameBoy {
     cpu: CPU,
     bus: Bus,
@@ -17,9 +19,15 @@ impl GameBoy {
         }
     }
 
+    pub fn single_step(&mut self) {
+        if !self.cpu.halted {
+            self.cpu.exec(&mut self.bus);
+        }
+    }
+
     pub fn run_to_vblank(&mut self) {
         for _ in 0..154 {
-            let until_clk = self.cpu.clk + u128::from(CPU_CLOCK / HSYNC_CLOCK);
+            let until_clk = self.cpu.clk + u128::from(CYCLES_PER_HSYNC);
 
             while self.cpu.clk < until_clk && !self.cpu.halted {
                 self.cpu.exec(&mut self.bus);
