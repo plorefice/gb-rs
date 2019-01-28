@@ -1,6 +1,7 @@
+use super::EmuState;
 use super::GameBoy;
 
-use imgui::{ImGuiCond, Ui};
+use imgui::{ImGuiCond, StyleVar, Ui};
 
 pub struct DisasmWindow {
     disasm: Vec<String>,
@@ -20,14 +21,20 @@ impl DisasmWindow {
         DisasmWindow { disasm }
     }
 
-    pub fn draw(&self, ui: &Ui) -> bool {
-        ui.window(im_str!("ROM00 disassembly"))
-            .size((300.0, 700.0), ImGuiCond::FirstUseEver)
-            .build(|| {
-                for s in self.disasm.iter() {
-                    ui.text(s);
-                }
-            });
+    pub fn draw(&self, ui: &Ui, state: &EmuState) -> bool {
+        ui.with_style_var(
+            StyleVar::Alpha(if state.running { 0.65 } else { 1.0 }),
+            || {
+                ui.window(im_str!("ROM00 disassembly"))
+                    .size((300.0, 740.0), ImGuiCond::FirstUseEver)
+                    .position((10.0, 10.0), ImGuiCond::FirstUseEver)
+                    .build(|| {
+                        for s in self.disasm.iter() {
+                            ui.text(s);
+                        }
+                    });
+            },
+        );
 
         true
     }

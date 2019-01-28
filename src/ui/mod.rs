@@ -21,14 +21,19 @@ use std::time::Instant;
 const EMU_X_RES: usize = 160;
 const EMU_Y_RES: usize = 144;
 
+#[derive(Default)]
+pub struct EmuState {
+    running: bool,
+}
+
 pub struct EmuUi {
     emu: GameBoy,
     ui_ctx: Rc<RefCell<UiContext>>,
+
+    state: EmuState,
     vpu_texture: Option<imgui::ImTexture>,
 
     disasm: DisasmWindow,
-
-    paused: bool,
 }
 
 impl EmuUi {
@@ -38,11 +43,11 @@ impl EmuUi {
         EmuUi {
             emu,
             ui_ctx: Rc::from(RefCell::new(UiContext::new())),
+
+            state: EmuState::default(),
             vpu_texture: None,
 
             disasm,
-
-            paused: true,
         }
     }
 
@@ -64,7 +69,7 @@ impl EmuUi {
             let delta_s = delta.as_secs() as f32 + delta.subsec_nanos() as f32 / 1_000_000_000.0;
             last_frame = now;
 
-            if !self.paused {
+            if self.state.running {
                 self.emu.run_to_vblank();
                 self.emu.rasterize(&mut vbuf[..]);
 
@@ -93,20 +98,20 @@ impl EmuUi {
     }
 
     fn draw(&mut self, ui: &Ui) -> bool {
-        self.paused = !ui.button(
-            if self.paused {
-                im_str!("Run")
-            } else {
-                im_str!("Pause")
-            },
-            (50.0, 20.0),
-        );
+        ui.window(im_str!("Emulator"))
+            .size((100.0, 60.0), ImGuiCond::FirstUseEver)
+            .position((320.0, 10.0), ImGuiCond::FirstUseEver)
+            .resizable(false)
+            .build(|| {
+                ui.checkbox(im_str!("Run"), &mut self.state.running);
+            });
 
         ui.window(im_str!("Screen"))
             .size(
                 (EMU_X_RES as f32 + 15.0, EMU_Y_RES as f32 + 40.0),
                 ImGuiCond::FirstUseEver,
             )
+            .position((600.0, 10.0), ImGuiCond::FirstUseEver)
             .resizable(false)
             .build(|| {
                 if let Some(texture) = self.vpu_texture {
@@ -115,6 +120,6 @@ impl EmuUi {
                 }
             });
 
-        self.disasm.draw(ui)
+        self.disasm.draw(ui, &self.state)
     }
 }
