@@ -27,6 +27,8 @@ pub struct EmuUi {
     vpu_texture: Option<imgui::ImTexture>,
 
     disasm: DisasmWindow,
+
+    paused: bool,
 }
 
 impl EmuUi {
@@ -39,6 +41,8 @@ impl EmuUi {
             vpu_texture: None,
 
             disasm,
+
+            paused: true,
         }
     }
 
@@ -47,7 +51,8 @@ impl EmuUi {
         let mut vbuf = vec![0; EMU_X_RES * EMU_Y_RES * 4];
 
         loop {
-            let mut ui_ctx = self.ui_ctx.borrow_mut();
+            let ui_ctx_c = self.ui_ctx.clone();
+            let mut ui_ctx = ui_ctx_c.borrow_mut();
 
             ui_ctx.poll_events();
             if ui_ctx.should_quit() {
@@ -59,24 +64,26 @@ impl EmuUi {
             let delta_s = delta.as_secs() as f32 + delta.subsec_nanos() as f32 / 1_000_000_000.0;
             last_frame = now;
 
-            self.emu.run_to_vblank();
-            self.emu.rasterize(&mut vbuf[..]);
+            if !self.paused {
+                self.emu.run_to_vblank();
+                self.emu.rasterize(&mut vbuf[..]);
 
-            let new_screen = Texture2d::new(
-                ui_ctx.display.get_context(),
-                RawImage2d {
-                    data: Cow::Borrowed(&vbuf[..]),
-                    width: EMU_X_RES as u32,
-                    height: EMU_Y_RES as u32,
-                    format: ClientFormat::U8U8U8U8,
-                },
-            )
-            .unwrap();
+                let new_screen = Texture2d::new(
+                    ui_ctx.display.get_context(),
+                    RawImage2d {
+                        data: Cow::Borrowed(&vbuf[..]),
+                        width: EMU_X_RES as u32,
+                        height: EMU_Y_RES as u32,
+                        format: ClientFormat::U8U8U8U8,
+                    },
+                )
+                .unwrap();
 
-            if let Some(texture) = self.vpu_texture {
-                ui_ctx.renderer.textures().replace(texture, new_screen);
-            } else {
-                self.vpu_texture = Some(ui_ctx.renderer.textures().insert(new_screen));
+                if let Some(texture) = self.vpu_texture {
+                    ui_ctx.renderer.textures().replace(texture, new_screen);
+                } else {
+                    self.vpu_texture = Some(ui_ctx.renderer.textures().insert(new_screen));
+                }
             }
 
             if !ui_ctx.render(delta_s, |ui| self.draw(ui)) {
@@ -85,8 +92,17 @@ impl EmuUi {
         }
     }
 
-    fn draw(&self, ui: &Ui) -> bool {
-        ui.window(im_str!("ROM"))
+    fn draw(&mut self, ui: &Ui) -> bool {
+        self.paused = !ui.button(
+            if self.paused {
+                im_str!("Run")
+            } else {
+                im_str!("Pause")
+            },
+            (50.0, 20.0),
+        );
+
+        ui.window(im_str!("Screen"))
             .size(
                 (EMU_X_RES as f32 + 15.0, EMU_Y_RES as f32 + 40.0),
                 ImGuiCond::FirstUseEver,

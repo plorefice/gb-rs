@@ -104,9 +104,9 @@ impl UiContext {
         self.should_quit
     }
 
-    pub fn render<F>(&mut self, delta_s: f32, f: F) -> bool
+    pub fn render<F>(&mut self, delta_s: f32, mut f: F) -> bool
     where
-        F: Fn(&Ui) -> bool,
+        F: FnMut(&Ui) -> bool,
     {
         let window = self.display.gl_window();
         let hidpi_factor = window.get_hidpi_factor();
