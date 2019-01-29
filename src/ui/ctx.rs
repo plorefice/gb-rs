@@ -1,28 +1,35 @@
+use conrod_core::{widget, Colorable, Positionable, Ui, UiBuilder, UiCell, Widget};
+use conrod_glium::Renderer;
+
 use glium::glutin;
 use glium::glutin::{
     ElementState::Pressed, Event, MouseButton, MouseScrollDelta, TouchPhase, WindowEvent::*,
 };
 use glium::{Display, Surface};
-use imgui::{FontGlyphRange, FrameSize, ImFontConfig, ImGui, Ui};
-use imgui_glium_renderer::Renderer;
 
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::time::{Duration, Instant};
 
-#[derive(Copy, Clone, PartialEq, Debug, Default)]
-struct MouseState {
-    pos: (i32, i32),
-    pressed: (bool, bool, bool),
-    wheel: f32,
+pub struct DisplayWinitWrapper(pub Display);
+
+impl conrod_winit::WinitWindow for DisplayWinitWrapper {
+    fn get_inner_size(&self) -> Option<(u32, u32)> {
+        self.0.gl_window().get_inner_size().map(Into::into)
+    }
+    fn hidpi_factor(&self) -> f32 {
+        self.0.gl_window().get_hidpi_factor() as _
+    }
 }
 
 pub struct UiContext {
-    pub imgui: ImGui,
-    pub display: Display,
+    pub ui: Ui,
+    pub display: DisplayWinitWrapper,
     pub renderer: Renderer,
-    pub events_loop: Rc<RefCell<glutin::EventsLoop>>,
 
-    mouse_state: MouseState,
+    pub events_loop: Rc<RefCell<glutin::EventsLoop>>,
+    pub event_loop: EventLoop,
+
     should_quit: bool,
 }
 
@@ -30,149 +37,143 @@ impl UiContext {
     pub fn new() -> UiContext {
         let events_loop = glutin::EventsLoop::new();
 
-        let context = glutin::ContextBuilder::new().with_vsync(true);
-        let builder = glutin::WindowBuilder::new()
+        let window = glutin::WindowBuilder::new()
             .with_title("gb-rs")
-            .with_dimensions(glutin::dpi::LogicalSize::new(1024.0, 764.0));
+            .with_dimensions((1024, 768).into());
 
-        let display = Display::new(builder, context, &events_loop).unwrap();
+        let context = glutin::ContextBuilder::new()
+            .with_vsync(true)
+            .with_multisampling(4);
 
-        let mut imgui = ImGui::init();
-        imgui.set_ini_filename(None);
+        let display = Display::new(window, context, &events_loop).unwrap();
+        let display = DisplayWinitWrapper(display);
 
-        let hidpi_factor = display.gl_window().get_hidpi_factor().round();
+        let mut ui = UiBuilder::new([1024.0, 768.0]).build();
 
-        UiContext::load_fonts(&mut imgui, hidpi_factor);
+        // Add fonts
 
-        let renderer = Renderer::init(&mut imgui, &display).expect("Failed to initialize renderer");
+        let mut renderer = Renderer::new(&display.0).unwrap();
 
         UiContext {
-            imgui,
+            ui,
             display,
             renderer,
             events_loop: Rc::new(RefCell::from(events_loop)),
+            event_loop: EventLoop::new(),
 
-            mouse_state: MouseState::default(),
             should_quit: false,
         }
     }
 
-    pub fn poll_events(&mut self) {
-        let hidpi_factor = self.window().get_hidpi_factor();
+    pub fn widget_ids_generator(&mut self) -> widget::id::Generator {
+        self.ui.widget_id_generator()
+    }
+
+    pub fn handle_events(&mut self) {
         let events_loop = self.events_loop.clone();
+        let mut events_loop = events_loop.borrow_mut();
 
-        events_loop.borrow_mut().poll_events(|event| {
-            if let Event::WindowEvent { event, .. } = event {
-                match event {
-                    CloseRequested => {
-                        self.should_quit = true;
-                    }
-                    CursorMoved { position: pos, .. } => {
-                        self.mouse_state.pos = pos
-                            .to_physical(hidpi_factor)
-                            .to_logical(hidpi_factor)
-                            .into();
-                    }
-                    MouseInput { state, button, .. } => match button {
-                        MouseButton::Left => self.mouse_state.pressed.0 = state == Pressed,
-                        MouseButton::Right => self.mouse_state.pressed.1 = state == Pressed,
-                        MouseButton::Middle => self.mouse_state.pressed.2 = state == Pressed,
-                        _ => {}
-                    },
-                    MouseWheel {
-                        delta: MouseScrollDelta::LineDelta(_, y),
-                        phase: TouchPhase::Moved,
-                        ..
-                    } => self.mouse_state.wheel = y,
-                    MouseWheel {
-                        delta: MouseScrollDelta::PixelDelta(pos),
-                        phase: TouchPhase::Moved,
-                        ..
-                    } => {
-                        self.mouse_state.wheel =
-                            pos.to_physical(hidpi_factor).to_logical(hidpi_factor).y as f32;
-                    }
-                    _ => (),
-                }
+        for event in self.event_loop.next(&mut events_loop) {
+            // Use the `winit` backend feature to convert the winit event to a conrod one.
+            if let Some(event) = conrod_winit::convert_event(event.clone(), &self.display) {
+                self.ui.handle_event(event);
+                self.event_loop.needs_update();
             }
-        });
 
-        self.update_imgui_mouse();
+            match event {
+                glium::glutin::Event::WindowEvent { event, .. } => match event {
+                    // Break from the loop upon `Escape`.
+                    glium::glutin::WindowEvent::CloseRequested
+                    | glium::glutin::WindowEvent::KeyboardInput {
+                        input:
+                            glium::glutin::KeyboardInput {
+                                virtual_keycode: Some(glium::glutin::VirtualKeyCode::Escape),
+                                ..
+                            },
+                        ..
+                    } => self.should_quit = true,
+                    _ => (),
+                },
+                _ => (),
+            }
+        }
     }
 
     pub fn should_quit(&self) -> bool {
         self.should_quit
     }
 
-    pub fn render<F>(&mut self, delta_s: f32, mut f: F) -> bool
+    pub fn render<F>(&mut self, mut f: F)
     where
-        F: FnMut(&Ui) -> bool,
+        F: FnMut(&mut UiCell),
     {
-        let window = self.display.gl_window();
-        let hidpi_factor = window.get_hidpi_factor();
+        // Instantiate all GUI components
+        {
+            let ui = &mut self.ui.set_widgets();
 
-        let physical_size = window.get_inner_size().unwrap().to_physical(hidpi_factor);
-        let logical_size = physical_size.to_logical(hidpi_factor);
-
-        let frame_size = FrameSize {
-            logical_size: logical_size.into(),
-            hidpi_factor,
-        };
-
-        let ui = self.imgui.frame(frame_size, delta_s);
-        if !f(&ui) {
-            return false;
+            f(ui);
         }
 
-        let mut target = self.display.draw();
-        target.clear_color(0.4, 0.5, 0.6, 1.0);
-        self.renderer
-            .render(&mut target, ui)
-            .expect("Rendering failed");
-        target.finish().unwrap();
+        let image_map = conrod_core::image::Map::<glium::texture::Texture2d>::new();
 
-        true
+        if let Some(primitives) = self.ui.draw_if_changed() {
+            self.renderer.fill(&self.display.0, primitives, &image_map);
+
+            let mut target = self.display.0.draw();
+            target.clear_color(0.0, 0.0, 0.0, 1.0);
+            self.renderer
+                .draw(&self.display.0, &mut target, &image_map)
+                .unwrap();
+            target.finish().unwrap();
+        }
+    }
+}
+
+pub struct EventLoop {
+    ui_needs_update: bool,
+    last_update: Instant,
+}
+
+impl EventLoop {
+    pub fn new() -> Self {
+        EventLoop {
+            last_update: Instant::now(),
+            ui_needs_update: true,
+        }
     }
 
-    fn window(&self) -> std::cell::Ref<'_, glutin::GlWindow> {
-        self.display.gl_window()
+    /// Produce an iterator yielding all available events.
+    pub fn next(&mut self, events_loop: &mut glutin::EventsLoop) -> Vec<glutin::Event> {
+        // We don't want to loop any faster than 60 FPS, so wait until it has been at least 16ms
+        // since the last yield.
+        let last_update = self.last_update;
+        let sixteen_ms = Duration::from_millis(16);
+        let duration_since_last_update = Instant::now().duration_since(last_update);
+        if duration_since_last_update < sixteen_ms {
+            std::thread::sleep(sixteen_ms - duration_since_last_update);
+        }
+
+        // Collect all pending events.
+        let mut events = Vec::new();
+        events_loop.poll_events(|event| events.push(event));
+
+        // If there are no events and the `Ui` does not need updating, wait for the next event.
+        if events.is_empty() && !self.ui_needs_update {
+            events_loop.run_forever(|event| {
+                events.push(event);
+                glutin::ControlFlow::Break
+            });
+        }
+
+        self.ui_needs_update = false;
+        self.last_update = Instant::now();
+
+        events
     }
 
-    fn load_fonts(imgui: &mut ImGui, hidpi_factor: f64) {
-        let font_size = 13.0 * hidpi_factor as f32;
-
-        imgui.fonts().add_font_with_config(
-            include_bytes!("../../res/mplus-1p-regular.ttf"),
-            ImFontConfig::new()
-                .oversample_h(1)
-                .pixel_snap_h(true)
-                .size_pixels(font_size)
-                .rasterizer_multiply(1.75),
-            &FontGlyphRange::japanese(),
-        );
-
-        imgui.fonts().add_default_font_with_config(
-            ImFontConfig::new()
-                .merge_mode(true)
-                .oversample_h(1)
-                .pixel_snap_h(true)
-                .size_pixels(font_size),
-        );
-
-        imgui.set_font_global_scale(1.0 / hidpi_factor as f32);
-    }
-
-    fn update_imgui_mouse(&mut self) {
-        self.imgui
-            .set_mouse_pos(self.mouse_state.pos.0 as f32, self.mouse_state.pos.1 as f32);
-        self.imgui.set_mouse_down([
-            self.mouse_state.pressed.0,
-            self.mouse_state.pressed.1,
-            self.mouse_state.pressed.2,
-            false,
-            false,
-        ]);
-        self.imgui.set_mouse_wheel(self.mouse_state.wheel);
-        self.mouse_state.wheel = 0.0;
+    /// Notifies the event loop that the `Ui` requires another update whether or not there are any
+    /// pending events.
+    pub fn needs_update(&mut self) {
+        self.ui_needs_update = true;
     }
 }

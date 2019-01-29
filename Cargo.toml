@@ -5,11 +5,10 @@ authors = ["Pietro Lorefice <pietro.lorefice@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-glium = { version = "0.22", default-features = true }
-glutin = "0.18"
-imgui = "0.0.21"
-imgui-sys = "0.0.21"
-imgui-glium-renderer = "0.0.21"
+glium = "0.23"
+conrod_core = "0.62"
+conrod_glium = "0.62"
+conrod_winit = "0.62"
 
 [profile.dev]
 overflow-checks = false

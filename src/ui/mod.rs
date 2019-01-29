@@ -1,20 +1,9 @@
 use super::gb::*;
 
 mod ctx;
-mod debug;
-mod disasm;
-mod utils;
-
 use ctx::UiContext;
-use debug::DebuggerWindow;
-use disasm::DisasmWindow;
 
-use glium::{
-    backend::Facade,
-    texture::{ClientFormat, RawImage2d},
-    Texture2d,
-};
-use imgui::{ImGuiCond, Ui};
+use conrod_core::{widget, Labelable, Positionable, Sizeable, UiCell, Widget};
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -42,31 +31,31 @@ impl EmuState {
     }
 }
 
+widget_ids!(struct Ids { canvas, button });
+
 pub struct EmuUi {
     ui_ctx: Rc<RefCell<UiContext>>,
+    canvas: widget::Id,
+    button: widget::Id,
 
     state: EmuState,
-    vpu_texture: Option<imgui::ImTexture>,
-
-    disasm: DisasmWindow,
-    debugger: DebuggerWindow,
 }
 
 impl EmuUi {
     pub fn new(emu: GameBoy) -> EmuUi {
         let state = EmuState::with(emu);
 
-        let disasm = DisasmWindow::new(&state);
-        let debugger = DebuggerWindow::new();
+        let mut ctx = UiContext::new();
+
+        let canvas = ctx.widget_ids_generator().next();
+        let button = ctx.widget_ids_generator().next();
 
         EmuUi {
-            ui_ctx: Rc::from(RefCell::new(UiContext::new())),
+            ui_ctx: Rc::from(RefCell::from(ctx)),
+            canvas,
+            button,
 
             state,
-            vpu_texture: None,
-
-            disasm,
-            debugger,
         }
     }
 
@@ -78,7 +67,7 @@ impl EmuUi {
             let ui_ctx = self.ui_ctx.clone();
             let mut ui_ctx = ui_ctx.borrow_mut();
 
-            ui_ctx.poll_events();
+            ui_ctx.handle_events();
             if ui_ctx.should_quit() {
                 break;
             }
@@ -88,57 +77,19 @@ impl EmuUi {
             let delta_s = delta.as_secs() as f32 + delta.subsec_nanos() as f32 / 1_000_000_000.0;
             last_frame = now;
 
-            if self.state.step_into {
-                self.state.gb.single_step();
-            } else if self.state.running {
-                self.state.gb.run_to_vblank();
-            }
-
-            self.state.gb.rasterize(&mut vbuf[..]);
-
-            let new_screen = Texture2d::new(
-                ui_ctx.display.get_context(),
-                RawImage2d {
-                    data: Cow::Borrowed(&vbuf[..]),
-                    width: EMU_X_RES as u32,
-                    height: EMU_Y_RES as u32,
-                    format: ClientFormat::U8U8U8U8,
-                },
-            )
-            .unwrap();
-
-            if let Some(texture) = self.vpu_texture {
-                ui_ctx.renderer.textures().replace(texture, new_screen);
-            } else {
-                self.vpu_texture = Some(ui_ctx.renderer.textures().insert(new_screen));
-            }
-
-            if !ui_ctx.render(delta_s, |ui| self.draw(ui)) {
-                break;
-            }
+            ui_ctx.render(|ui| self.draw(ui))
         }
     }
 
-    fn draw(&mut self, ui: &Ui) -> bool {
-        self.draw_screen(ui);
-        self.disasm.draw(ui, &mut self.state);
-        self.debugger.draw(ui, &mut self.state);
-        true
-    }
+    fn draw(&mut self, ui: &mut UiCell) {
+        // Create a background canvas upon which we'll place the button.
+        widget::Canvas::new().pad(40.0).set(self.canvas, ui);
 
-    fn draw_screen(&mut self, ui: &Ui) {
-        ui.window(im_str!("Screen"))
-            .size(
-                (EMU_X_RES as f32 + 15.0, EMU_Y_RES as f32 + 40.0),
-                ImGuiCond::FirstUseEver,
-            )
-            .position((780.0, 10.0), ImGuiCond::FirstUseEver)
-            .resizable(false)
-            .build(|| {
-                if let Some(texture) = self.vpu_texture {
-                    ui.image(texture, (EMU_X_RES as f32, EMU_Y_RES as f32))
-                        .build();
-                }
-            });
+        // Draw the button and increment `count` if pressed.
+        widget::Button::new()
+            .middle_of(self.canvas)
+            .w_h(80.0, 80.0)
+            .label("Fuffa")
+            .set(self.button, ui);
     }
 }

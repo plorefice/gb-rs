@@ -1,6 +1,8 @@
 #[macro_use]
-extern crate imgui;
-extern crate imgui_sys;
+extern crate conrod_core;
+extern crate conrod_glium;
+extern crate conrod_winit;
+extern crate glium;
 
 mod gb;
 mod ui;
