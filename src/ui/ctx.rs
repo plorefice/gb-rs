@@ -1,10 +1,9 @@
-use conrod_core::{widget, Colorable, Positionable, Ui, UiBuilder, UiCell, Widget};
+use super::support;
+
+use conrod_core::{widget, Ui, UiBuilder, UiCell};
 use conrod_glium::Renderer;
 
 use glium::glutin;
-use glium::glutin::{
-    ElementState::Pressed, Event, MouseButton, MouseScrollDelta, TouchPhase, WindowEvent::*,
-};
 use glium::{Display, Surface};
 
 use std::cell::RefCell;
@@ -48,11 +47,15 @@ impl UiContext {
         let display = Display::new(window, context, &events_loop).unwrap();
         let display = DisplayWinitWrapper(display);
 
-        let mut ui = UiBuilder::new([1024.0, 768.0]).build();
+        let mut ui = UiBuilder::new([1024.0, 768.0])
+            .theme(support::theme())
+            .build();
 
-        // Add fonts
+        ui.fonts
+            .insert_from_file("res/mplus-1p-regular.ttf")
+            .unwrap();
 
-        let mut renderer = Renderer::new(&display.0).unwrap();
+        let renderer = Renderer::new(&display.0).unwrap();
 
         UiContext {
             ui,
@@ -80,8 +83,8 @@ impl UiContext {
                 self.event_loop.needs_update();
             }
 
-            match event {
-                glium::glutin::Event::WindowEvent { event, .. } => match event {
+            if let glium::glutin::Event::WindowEvent { event, .. } = event {
+                match event {
                     // Break from the loop upon `Escape`.
                     glium::glutin::WindowEvent::CloseRequested
                     | glium::glutin::WindowEvent::KeyboardInput {
@@ -93,8 +96,7 @@ impl UiContext {
                         ..
                     } => self.should_quit = true,
                     _ => (),
-                },
-                _ => (),
+                }
             }
         }
     }
@@ -107,12 +109,7 @@ impl UiContext {
     where
         F: FnMut(&mut UiCell),
     {
-        // Instantiate all GUI components
-        {
-            let ui = &mut self.ui.set_widgets();
-
-            f(ui);
-        }
+        f(&mut self.ui.set_widgets());
 
         let image_map = conrod_core::image::Map::<glium::texture::Texture2d>::new();
 

@@ -1,7 +1,13 @@
 use super::gb::*;
 
 mod ctx;
+mod debug;
+mod disasm;
+mod support;
+
 use ctx::UiContext;
+use debug::DebuggerWindow;
+use disasm::DisasmWindow;
 
 use conrod_core::{widget, Labelable, Positionable, Sizeable, UiCell, Widget};
 
@@ -35,27 +41,25 @@ widget_ids!(struct Ids { canvas, button });
 
 pub struct EmuUi {
     ui_ctx: Rc<RefCell<UiContext>>,
-    canvas: widget::Id,
-    button: widget::Id,
-
     state: EmuState,
+
+    disasm: DisasmWindow,
+    debugger: DebuggerWindow,
 }
 
 impl EmuUi {
     pub fn new(emu: GameBoy) -> EmuUi {
         let state = EmuState::with(emu);
-
         let mut ctx = UiContext::new();
 
-        let canvas = ctx.widget_ids_generator().next();
-        let button = ctx.widget_ids_generator().next();
+        let disasm = DisasmWindow::new(ctx.widget_ids_generator(), &state);
+        let debugger = DebuggerWindow::new(ctx.widget_ids_generator());
 
         EmuUi {
             ui_ctx: Rc::from(RefCell::from(ctx)),
-            canvas,
-            button,
-
             state,
+            disasm,
+            debugger,
         }
     }
 
@@ -82,14 +86,7 @@ impl EmuUi {
     }
 
     fn draw(&mut self, ui: &mut UiCell) {
-        // Create a background canvas upon which we'll place the button.
-        widget::Canvas::new().pad(40.0).set(self.canvas, ui);
-
-        // Draw the button and increment `count` if pressed.
-        widget::Button::new()
-            .middle_of(self.canvas)
-            .w_h(80.0, 80.0)
-            .label("Fuffa")
-            .set(self.button, ui);
+        self.disasm.draw(ui, &mut self.state);
+        self.debugger.draw(ui, &mut self.state);
     }
 }
