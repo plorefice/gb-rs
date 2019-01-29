@@ -8,6 +8,7 @@ edition = "2018"
 glium = { version = "0.22", default-features = true }
 glutin = "0.18"
 imgui = "0.0.21"
+imgui-sys = "0.0.21"
 imgui-glium-renderer = "0.0.21"
 
 [profile.dev]

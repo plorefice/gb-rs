@@ -1,5 +1,6 @@
 #[macro_use]
 extern crate imgui;
+extern crate imgui_sys;
 
 mod gb;
 mod ui;

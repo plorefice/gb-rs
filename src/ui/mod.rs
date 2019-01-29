@@ -3,6 +3,7 @@ use super::gb::*;
 mod ctx;
 mod debug;
 mod disasm;
+mod utils;
 
 use ctx::UiContext;
 use debug::DebuggerWindow;

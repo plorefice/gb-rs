@@ -1,8 +1,9 @@
+use super::utils;
 use super::{EmuState, Instruction};
 
 use std::collections::BTreeMap;
 
-use imgui::{ImGuiCond, Ui};
+use imgui::{ImGuiCond, ImString, Ui};
 
 pub struct DisasmWindow {
     disasm: BTreeMap<u16, Instruction>,
@@ -49,15 +50,31 @@ impl DisasmWindow {
             .position((10.0, 10.0), ImGuiCond::FirstUseEver)
             .build(|| {
                 for (addr, instr) in self.disasm.iter() {
-                    ui.text(format!("{:04X}", addr));
-                    ui.same_line(70.0);
-                    ui.text(format!("{:02X}", instr.opcode));
-                    if let Some(imm) = instr.imm {
-                        ui.same_line(100.0);
-                        ui.text(format!("{:04X}", imm));
+                    let text = format!(
+                        "{:04X}\t{:02X} {:4}\t{}",
+                        addr,
+                        instr.opcode,
+                        if let Some(imm) = instr.imm {
+                            format!("{:04X}", imm)
+                        } else {
+                            "    ".to_string()
+                        },
+                        instr.mnemonic
+                    );
+
+                    if *addr == state.gb.cpu().pc {
+                        let scroll_y = unsafe { imgui_sys::igGetScrollY() };
+                        let (cx, cy) = ui.get_cursor_pos();
+
+                        utils::text_with_bg(
+                            ui,
+                            (cx, cy - scroll_y),
+                            ImString::new(text),
+                            Some(utils::text_bg_color(ui)),
+                        );
+                    } else {
+                        ui.text(text);
                     }
-                    ui.same_line(160.0);
-                    ui.text(instr.mnemonic);
                 }
             });
     }
