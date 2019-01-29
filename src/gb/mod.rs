@@ -5,4 +5,5 @@ mod memory;
 mod sound;
 mod video;
 
-pub use gameboy::GameBoy;
+pub use cpu::*;
+pub use gameboy::*;

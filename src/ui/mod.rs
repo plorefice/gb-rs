@@ -1,4 +1,4 @@
-use super::gb::GameBoy;
+use super::gb::*;
 
 mod ctx;
 mod debug;

@@ -29,7 +29,6 @@ impl DebuggerWindow {
 
                 DebuggerWindow::print_reg(ui, (100.0, 60.0), "SP", cpu.sp);
                 DebuggerWindow::print_reg(ui, (100.0, 75.0), "PC", cpu.pc);
-
                 DebuggerWindow::print_flags(ui, state);
 
                 ui.set_cursor_pos((0.0, 130.0));
