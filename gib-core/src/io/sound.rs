@@ -104,6 +104,9 @@ struct ToneChannel {
     enabled: bool,
     timer_counter: u32,
 
+    // Length counter
+    len_ctr: u32,
+
     // Frequency sweep unit
     sweep_support: bool,
     sweep_enabled: bool,
@@ -138,6 +141,8 @@ impl ToneChannel {
 
             enabled: false,
             timer_counter: 0,
+
+            len_ctr: 0,
 
             sweep_support,
             sweep_enabled: false,
@@ -240,16 +245,12 @@ impl ToneChannel {
 
     /// Advances the length counter unit by 1/256th of a second.
     fn tick_len_ctr(&mut self) {
-        let len = (self.nrx1 & NRx1::SOUND_LEN).bits();
-
         // When clocked while enabled by NRx4 and the counter is not zero, length is decremented
-        if self.nrx4.contains(NRx4::LEN_EN) && len != 0 {
-            let len = len - 1;
-
-            self.nrx1 = (self.nrx1 & !NRx1::SOUND_LEN) | NRx1::from_bits_truncate(len);
+        if self.nrx4.contains(NRx4::LEN_EN) && self.len_ctr != 0 {
+            self.len_ctr -= 1;
 
             // If it becomes zero, the channel is disabled
-            if len == 0 {
+            if self.len_ctr == 0 {
                 self.enabled = false;
             }
         }
@@ -325,8 +326,8 @@ impl ToneChannel {
             self.enabled = true;
 
             // If length counter is zero, it is set to 64 (256 for wave channel)
-            if (self.nrx1 & NRx1::SOUND_LEN).bits() == 0 {
-                self.nrx1 |= NRx1::SOUND_LEN;
+            if self.len_ctr == 0 {
+                self.len_ctr = 64;
             }
 
             // Frequency timer is reloaded with period
@@ -382,7 +383,11 @@ impl MemW for ToneChannel {
     fn write(&mut self, addr: u16, val: u8) -> Result<(), dbg::TraceEvent> {
         match addr {
             0 => self.nrx0 = NRx0::from_bits_truncate(val),
-            1 => self.nrx1 = NRx1::from_bits_truncate(val),
+            1 => {
+                self.nrx1 = NRx1::from_bits_truncate(val);
+
+                self.len_ctr = (self.nrx1 & NRx1::SOUND_LEN).bits() as u32;
+            }
             2 => {
                 self.nrx2 = NRx2::from_bits_truncate(val);
 
@@ -411,6 +416,9 @@ struct WaveChannel {
     enabled: bool,
     timer_counter: u32,
 
+    // Length counter
+    len_ctr: u32,
+
     // Wave functions
     wave_ram: [u8; 16],
     sample_buffer: u8,
@@ -428,6 +436,8 @@ impl Default for WaveChannel {
 
             enabled: false,
             timer_counter: 0,
+
+            len_ctr: 0,
 
             wave_ram: [0; 16],
             sample_buffer: 0,
@@ -461,16 +471,12 @@ impl WaveChannel {
 
     /// Advances the length counter unit by 1/256th of a second.
     fn tick_len_ctr(&mut self) {
-        let len = (self.nrx1 & NRx1::WAVE_SOUND_LEN).bits();
-
         // When clocked while enabled by NRx4 and the counter is not zero, length is decremented
-        if self.nrx4.contains(NRx4::LEN_EN) && len != 0 {
-            let len = len - 1;
-
-            self.nrx1 = (self.nrx1 & !NRx1::WAVE_SOUND_LEN) | NRx1::from_bits_truncate(len);
+        if self.nrx4.contains(NRx4::LEN_EN) && self.len_ctr != 0 {
+            self.len_ctr -= 1;
 
             // If it becomes zero, the channel is disabled
-            if len == 0 {
+            if self.len_ctr == 0 {
                 self.enabled = false;
             }
         }
@@ -518,7 +524,7 @@ impl WaveChannel {
 
             // If length counter is zero, it is set to 64 (256 for wave channel)
             if (self.nrx1 & NRx1::WAVE_SOUND_LEN).bits() == 0 {
-                self.nrx1 |= NRx1::WAVE_SOUND_LEN;
+                self.len_ctr = 255;
             }
 
             // Frequency timer is reloaded with period
